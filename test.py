@@ -20,7 +20,7 @@ from numpy import (sin, cos, tan, log, log10, pi, average,
 from numpy.random import random, randint, normal, shuffle, choice as randchoice
 import os  # handy system and path functions
 import sys  # to get file system encoding
-
+from datetime import datetime, timedelta
 from psychopy.hardware import keyboard
 
 # --- Setup global variables (available in all functions) ---
@@ -374,7 +374,7 @@ def run(expInfo, thisExp, win, globalClock=None, thisSession=None):
     
     # --- Initialize components for Routine "Intro" ---
     intro_text = visual.TextStim(win=win, name='intro_text',
-        text='欢迎参与实验！\n每个试次会呈现两个选项，例如：\n左侧："立即获得50元"  右侧："7天后获得100元"\n请按【左箭头】选择左侧选项，按【右箭头】选择右侧选项\n选择你更偏好的选项即可\n按"空格"开始实验',
+        text='欢迎参与实验！\n每个试次会呈现两个选项，例如：\n左侧："立即获得50元"  右侧："7天后获得100元"\n请按【左箭头】选择左侧选\n按【右箭头】选择右侧选项\n选择你更偏好的选项即可\n按"空格"开始实验',
         font='Arial',
         pos=(0, 0), draggable=False, height=0.05, wrapWidth=None, ori=0.0, 
         color='white', colorSpace='rgb', opacity=None, 
@@ -395,7 +395,7 @@ def run(expInfo, thisExp, win, globalClock=None, thisSession=None):
         text='',  # 内容后续动态赋值
         font='Arial',
         pos=(-0.3, 0),  # 左移0.3单位（避免与右选项重叠）
-        draggable=False, height=0.04, wrapWidth=0.5, ori=0.0,  # 限制宽度，避免换行混乱
+        draggable=False, height=0.035, wrapWidth=0.6, ori=0.0,  # 限制宽度，避免换行混乱
         color='white', colorSpace='rgb', opacity=None, 
         languageStyle='LTR',
         depth=-1.0);
@@ -404,7 +404,7 @@ def run(expInfo, thisExp, win, globalClock=None, thisSession=None):
         text='',  # 内容后续动态赋值
         font='Arial',
         pos=(0.3, 0),  # 右移0.3单位
-        draggable=False, height=0.04, wrapWidth=0.5, ori=0.0, 
+        draggable=False, height=0.035, wrapWidth=0.6, ori=0.0,
         color='white', colorSpace='rgb', opacity=None, 
         languageStyle='LTR',
         depth=-2.0);
@@ -419,33 +419,36 @@ def run(expInfo, thisExp, win, globalClock=None, thisSession=None):
         color='white', colorSpace='rgb', opacity=None, 
         languageStyle='LTR',
         depth=0.0);
-        
-    # --- 【新增】定义时间贴现实验核心参数 ---
-    # 1. 标准选项列表：(标准延迟天数, 标准金额)，每个是一个"区块"
-    # （比如：即时100元、1周后100元、1个月后100元...）
+
+    # --- 【替换】为以下代码 ---
+
+    # 1. 设置实验开始的“今天”
+    experiment_start_date = datetime.now()
+
+    # 2. 升级后的延迟时间列表 (对数分布) - 使用小金额组作为默认
+    # 格式：(延迟天数, 固定金额)
     standard_options = [
-        (0, 100),    # 区块1：即时获得100元（参照组）
-        (1, 100),
-        (2, 100),
-        (3, 100),
-        (4, 100),
-        (5, 100),
-        (6, 100),
-        (7, 100)
+        (1, 100),  # 1天
+        (7, 100),  # 1周
+        (30, 100),  # 1个月
+        (90, 100),  # 3个月
+        (180, 100),  # 半年
+        (365, 100),  # 1年
+        (3650, 100)  # 10年 (捕捉极度耐心)
     ]
-    # 随机打乱区块顺序（避免顺序效应，满足"序列随机"需求）
+    # 随机打乱区块顺序
     shuffle(standard_options)
 
-    # 2. PEST算法参数（逼近等价点的关键）
+    # 2. PEST算法参数（保持不变，微调步长）
     pest_params = {
-        'initial_comp_m': 50,    # 初始比较金额（比如一开始用50元和100元比）
-        'initial_step': 20,      # 初始调整步长（选对/选错后，金额变20元）
-        'min_step': 2,           # 最小步长（步长减半到2元后不再减小，保证精度）
-        'max_reversals': 6       # 每个区块的最大反转次数（达到6次就换区块，保证收敛）
+        'initial_comp_m': 50,
+        'initial_step': 25,  # 建议改为25
+        'min_step': 1,  # 建议改为1
+        'max_reversals': 6
     }
 
-    # 3. 固定比较延迟（可按需改，这里设为"即时"，即0天，简化实验逻辑）
-    fixed_comp_t = 0  # 比较选项都是"即时获得x元"
+    # 3. 固定比较延迟
+    fixed_comp_t = 0
 
     # create some handy timers
     
@@ -646,19 +649,44 @@ def run(expInfo, thisExp, win, globalClock=None, thisSession=None):
         reversal_count = 0                              # 反转次数（判断是否结束区块）
         prev_choice_is_standard = None                  # 上一次是否选了标准选项（判断反转）
 
-        # --- 当前区块的动态试次循环（直到达到最大反转次数） ---
+        # --- 当前区块的动态试次循环 ---
         while reversal_count < pest_params['max_reversals']:
-            # --- 1. 随机分配左右选项（避免空间偏好，满足"序列随机"） ---
+
+            # --- 【删除】原来的 if random() < 0.5: ... else ... 这一整块逻辑 ---
+
+            # --- 【插入】下面这一大段新代码 ---
+
+            # A. 计算未来的具体日期
+            # standard_t 是当前区块的延迟天数
+            future_date = experiment_start_date + timedelta(days=standard_t)
+
+            # B. 格式化日期字符串
+            # Windows系统下，strftime如果不支持中文，可改用 f"{future_date.month}月{future_date.day}日"
+            try:
+                date_str = future_date.strftime("%m月%d日")
+                year_str = future_date.strftime("%Y年")
+            except:
+                # 备用方案，防止某些系统中文编码报错
+                date_str = f"{future_date.month}月{future_date.day}日"
+                year_str = f"{future_date.year}年"
+
+            # C. 生成选项文本 (结合 Date Framing 和 Explicit Zero)
             if random() < 0.5:
-                # 情况1：左=标准选项，右=比较选项
-                opt1_content = f'{standard_t}天后获得{standard_m}元'
-                opt2_content = f'{fixed_comp_t}天后获得{current_comp_m}元'
-                standard_side = 'left'  # 标准选项在左
+                # 情况1：左=标准选项（延迟），右=比较选项（即时）
+                # 文本示例："2025年5月28日\n获得 100 元\n(现在获得 0 元)"
+                opt1_content = f"{year_str}{date_str}\n获得 {standard_m} 元\n(现在获得 0 元)"
+
+                # 文本示例："现在\n获得 50 元\n(2025年5月28日获得 0 元)"
+                opt2_content = f"现在\n获得 {current_comp_m} 元\n({year_str}{date_str}获得 0 元)"
+
+                standard_side = 'left'
             else:
-                # 情况2：左=比较选项，右=标准选项
-                opt1_content = f'{fixed_comp_t}天后获得{current_comp_m}元'
-                opt2_content = f'{standard_t}天后获得{standard_m}元'
-                standard_side = 'right'  # 标准选项在右
+                # 情况2：左右交换
+                opt1_content = f"现在\n获得 {current_comp_m} 元\n({year_str}{date_str}获得 0 元)"
+                opt2_content = f"{year_str}{date_str}\n获得 {standard_m} 元\n(现在获得 0 元)"
+                standard_side = 'right'
+
+            # --- 【插入结束】 ---
 
             # --- 2. 运行单个试次的Routine（注视点→选项呈现→反应） ---
             # 准备试次Routine（沿用原有Routine结构）
