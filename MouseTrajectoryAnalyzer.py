@@ -4,11 +4,9 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy import stats
 import os
-import re
 from matplotlib.patches import Rectangle
 from glob import glob
 
-# 设置中文字体
 plt.rcParams["font.family"] = ["SimHei"]
 plt.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
 
@@ -16,8 +14,8 @@ class MouseTrajectoryAnalyzer:
     def __init__(self, data_path):
         """初始化分析器，加载数据"""
         self.data_path = data_path
-        self.df = self.load_data(self.data_path)  # 传入data_path参数
-        self.preprocess_data()  # 在这里调用预处理方法
+        self.df = self.load_data(self.data_path)
+        self.preprocess_data()
 
     def load_data(self, data_path):
         """加载实验数据"""
@@ -30,9 +28,7 @@ class MouseTrajectoryAnalyzer:
             data = pd.read_csv(data_path)
         
         print(f"成功加载数据，共{len(data)}条有效试次")
-        return data  # 返回加载的数据，而不是self
-
-# 保持其他方法不变
+        return data
     
     def preprocess_data(self):
         """预处理数据，解析轨迹信息"""
@@ -100,7 +96,7 @@ class MouseTrajectoryAnalyzer:
         # 初始方向向量（取前5个点）
         initial_vec = trajectory[4] - trajectory[0]
         
-        # 目标方向（左或右）
+        # 目标方向
         target_x = -0.4 if choice_side == 'left' else 0.4
         target_vec = np.array([target_x, 0.3]) - trajectory[0]  # 终点坐标
         
@@ -123,7 +119,7 @@ class MouseTrajectoryAnalyzer:
         dx = np.diff(trajectory[:, 0])
         # 只关注显著的方向变化
         direction = np.sign(dx)
-        direction[abs(dx) < 0.01] = 0  # 忽略微小变化
+        direction[abs(dx) < 0.01] = 0
         
         # 计算方向变化次数
         changes = 0
@@ -159,7 +155,7 @@ class MouseTrajectoryAnalyzer:
                 if len(choice_data) == 0:
                     continue
                 
-                # 对齐轨迹点（插值到相同长度）
+                # 对齐轨迹点: 插值到相同长度
                 max_len = max(len(traj) for traj in choice_data['trajectory'])
                 aligned_trajs = []
                 
@@ -277,20 +273,14 @@ class MouseTrajectoryAnalyzer:
 
 # 使用示例
 if __name__ == "__main__":
-
-    # 创建分析器实例
     analyzer = MouseTrajectoryAnalyzer(data_path="./data")
     
-    # 生成平均轨迹图
     analyzer.plot_average_trajectories("average_trajectories.png")
     
-    # 进行统计分析
     analyzer.analyze_by_condition()
     
-    # 绘制关键指标比较图
     analyzer.plot_metric_comparison("conflict_index", "conflict_index_comparison.png")
     analyzer.plot_metric_comparison("max_deviation", "max_deviation_comparison.png")
     
-    # 绘制冲突指数与反应时的关系（双系统理论的关键验证）
     analyzer.plot_conflict_vs_rt("conflict_vs_rt.png")
     
