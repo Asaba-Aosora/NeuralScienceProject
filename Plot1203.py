@@ -15,6 +15,7 @@ import glob
 import os
 import warnings
 from scipy.stats import gaussian_kde  # 用于密度计算
+from scipy.stats import gaussian_kde  # 用于密度计算
 
 # Ignore warnings for cleaner output
 warnings.filterwarnings('ignore')
@@ -357,13 +358,10 @@ def plot_traj_heatmap(df, press_cond, ax, title):
     
     # 自定义图例（区分gain和loss）
     from matplotlib.lines import Line2D
-    legend_elements = [
-        Line2D([0], [0], color=colors_sign['gain'], lw=4, label='Gain'),
-        Line2D([0], [0], color=colors_sign['loss'], lw=4, label='Loss')
-    ]
-    ax.legend(handles=legend_elements, loc='upper left', frameon=False, fontsize=12)
+    lines = [Line2D([0], [0], color=colors_sign['gain'], lw=2),
+             Line2D([0], [0], color=colors_sign['loss'], lw=2)]
+    ax.legend(lines, ['Gain', 'Loss'], loc='upper left', frameon=False)
 
-import pandas as pd
 from statsmodels.stats.anova import AnovaRM
 
 def calculate_main_effect(df):
@@ -394,5 +392,6 @@ def calculate_main_effect(df):
 
 # 调用函数
 # calculate_main_effect(df)
+
 if __name__ == '__main__':
     run_plotting()
