@@ -266,14 +266,14 @@ def run_plotting():
     # Fig 7: Trajectory Visualization → 改为密度热力图 (核心修改部分)
     # 逻辑：收集所有轨迹的(x,y)点，计算密度，用热力图展示
     # =======================================================
-    fig, axes = plt.subplots(1, 2, figsize=(16, 6))  # 调整图大小（原300过宽，改为16）
-    plot_traj_heatmap(df_merged, 'no_pressure', axes[0], "Fig 7A. Trajectory Density: No Pressure")
-    plot_traj_heatmap(df_merged, 'high_pressure', axes[1], "Fig 7B. Trajectory Density: High Pressure")
-    plt.tight_layout(
-        pad=2.0,
-        w_pad=4.0,
-        h_pad=3.0,
-    )
+    # fig, axes = plt.subplots(1, 2, figsize=(16, 6))  # 调整图大小（原300过宽，改为16）
+    # plot_traj_heatmap(df_merged, 'no_pressure', axes[0], "Fig 7A. Trajectory Density: No Pressure")
+    # plot_traj_heatmap(df_merged, 'high_pressure', axes[1], "Fig 7B. Trajectory Density: High Pressure")
+    # plt.tight_layout(
+    #     pad=2.0,
+    #     w_pad=4.0,
+    #     h_pad=3.0,
+    # )
 
     plt.show()
 
