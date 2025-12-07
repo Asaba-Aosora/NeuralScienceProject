@@ -174,7 +174,7 @@ def plot_results(ip_df, fit_results):
 # -------------------------- 主函数：串联所有步骤 --------------------------
 if __name__ == '__main__':
     # 1. 加载并预处理数据（替换为你的CSV路径）
-    csv_path = 'data/030330_loop_2025-11-27_20h25.06.445.csv'
+    csv_path = 'data/789964_loop_2025-11-29_20h32.41.286.csv'
     trial_df = load_and_preprocess_data(csv_path)
     
     # 2. 计算等价点
