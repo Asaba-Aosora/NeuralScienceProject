@@ -344,6 +344,7 @@ def run_experiment():
                 thisExp.addData('chose_delayed', chose_delayed)
                 thisExp.addData('max_deviation', md)       # 轨迹弯曲度
                 thisExp.addData('raw_trajectory', traj_str)# 原始轨迹
+                thisExp.addData('choice_side', choice_side)
                 thisExp.nextEntry()
 
                 # --- PEST 逻辑 (核心) ---
