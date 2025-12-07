@@ -14,6 +14,7 @@ import seaborn as sns
 import glob
 import os
 import warnings
+from scipy.stats import gaussian_kde  # 用于密度计算
 
 # Ignore warnings for cleaner output
 warnings.filterwarnings('ignore')
@@ -128,6 +129,8 @@ def generate_mock_data(n_subs=20):
 def run_plotting():
     df = load_data()
 
+    calculate_main_effect(df)
+    
     # --- Pre-calculation ---
     # 1. Calculate IP (Indifference Point)
     df_ip = df.groupby(['participant', 'block_sign', 'block_pressure']).tail(3)
@@ -259,60 +262,137 @@ def run_plotting():
     plt.show()
 
     # =======================================================
-    # Figure 7: Trajectory Visualization (Spaghetti Plot)
+    # Fig 7: Trajectory Visualization → 改为密度热力图 (核心修改部分)
+    # 逻辑：收集所有轨迹的(x,y)点，计算密度，用热力图展示
     # =======================================================
-    fig, axes = plt.subplots(1, 2, figsize=(300, 6))
-
-    plot_traj_on_ax(df_merged, 'no_pressure', axes[0], "Fig 7A. Trajectories: No Pressure")
-    plot_traj_on_ax(df_merged, 'high_pressure', axes[1], "Fig 7B. Trajectories: High Pressure")
-
-    # tight_layout 自动调整，可指定参数
+    fig, axes = plt.subplots(1, 2, figsize=(16, 6))  # 调整图大小（原300过宽，改为16）
+    plot_traj_heatmap(df_merged, 'no_pressure', axes[0], "Fig 7A. Trajectory Density: No Pressure")
+    plot_traj_heatmap(df_merged, 'high_pressure', axes[1], "Fig 7B. Trajectory Density: High Pressure")
     plt.tight_layout(
-        pad=2.0,  # 图形边缘的填充
-        w_pad=4.0,  # 子图之间的水平间距
-        h_pad=3.0,  # 子图之间的垂直间距
+        pad=2.0,
+        w_pad=4.0,
+        h_pad=3.0,
     )
+
     plt.show()
 
 
-# --- Helper for Trajectory Plotting ---
-def plot_traj_on_ax(df, press_cond, ax, title):
+# --- 新增：热力图绘制辅助函数（替代原plot_traj_on_ax）---
+def plot_traj_heatmap(df, press_cond, ax, title):
     sub_df = df[df['block_pressure'] == press_cond]
+    # 收集所有情境的轨迹点（gain和loss分开存储）
+    points_gain = {'x': [], 'y': []}
+    points_loss = {'x': [], 'y': []}
+    
     count = 0
     for idx, row in sub_df.iterrows():
         try:
+            # 解析轨迹点
             points = str(row['raw_trajectory']).split(';')
             xs = [float(p.split(',')[0]) for p in points]
             ys = [float(p.split(',')[1]) for p in points]
         except:
             continue
-
-        if len(xs) < 2: continue
-
-        # Normalize start to (0,0)
+        if len(xs) < 2:
+            continue
+        
+        # 归一化起始点到(0,0)（保持原逻辑）
         xs = [x - xs[0] for x in xs]
         ys = [y - ys[0] for y in ys]
-
-        # Flip left choices to right for comparison
-        if xs[-1] < 0: xs = [-x for x in xs]
-
-        color = colors_sign['gain'] if row['block_sign'] == 'gain' else colors_sign['loss']
-        ax.plot(xs, ys, color=color, alpha=0.15, linewidth=1)
-
+        # 左选轨迹翻转到右侧（保持原逻辑，方便对比）
+        if xs[-1] < 0:
+            xs = [-x for x in xs]
+        
+        # 按情境分类存储点
+        if row['block_sign'] == 'gain':
+            points_gain['x'].extend(xs)
+            points_gain['y'].extend(ys)
+        else:
+            points_loss['x'].extend(xs)
+            points_loss['y'].extend(ys)
+        
         count += 1
-        if count > 150: break
-
+        if count > 150:  # 最多用150个试次，避免数据过多
+            break
+    
+    # ----------------------
+    # 步骤1：创建网格（用于热力图）
+    # ----------------------
+    ax.set_facecolor('#F0F0F0')
+    x_min, x_max = -0.1, 0.5  # 与原坐标轴范围一致
+    y_min, y_max = -0.1, 0.6
+    grid_size = 0.005  # 网格精度（越小越精细，可调整）
+    xx, yy = np.mgrid[x_min:x_max:grid_size, y_min:y_max:grid_size]
+    positions = np.vstack([xx.ravel(), yy.ravel()])
+    
+    # ----------------------
+    # 步骤2：计算每个情境的密度并绘制
+    # ----------------------
+    # 1. Gain情境（金色）
+    if len(points_gain['x']) > 0:
+        # 组合坐标点
+        gain_data = np.vstack([points_gain['x'], points_gain['y']])
+        # 高斯核密度估计（平滑密度分布）
+        kde_gain = gaussian_kde(gain_data)
+        zz_gain = np.reshape(kde_gain(positions).T, xx.shape)
+        # 绘制热力图（alpha=0.6避免遮挡）
+        im1 = ax.imshow(zz_gain.T, extent=(x_min, x_max, y_min, y_max), 
+                        origin='lower', cmap='YlOrRd', alpha=0.6, aspect='auto')
+    
+    # 2. Loss情境（紫色）
+    if len(points_loss['x']) > 0:
+        loss_data = np.vstack([points_loss['x'], points_loss['y']])
+        kde_loss = gaussian_kde(loss_data)
+        zz_loss = np.reshape(kde_loss(positions).T, xx.shape)
+        im2 = ax.imshow(zz_loss.T, extent=(x_min, x_max, y_min, y_max), 
+                        origin='lower', cmap='Purples', alpha=0.6, aspect='auto')
+    
+    # ----------------------
+    # 步骤3：美化设置（保持原风格）
+    # ----------------------
     ax.set_title(title, fontweight='bold')
-    ax.set_xlim(-0.1, 0.5)
-    ax.set_ylim(-0.1, 0.6)
-    ax.axis('off')
-
-    # Custom Legend
+    ax.set_xlim(x_min, x_max)
+    ax.set_ylim(y_min, y_max)
+    ax.axis('off')  # 隐藏坐标轴（与原图一致）
+    
+    # 自定义图例（区分gain和loss）
     from matplotlib.lines import Line2D
-    lines = [Line2D([0], [0], color=colors_sign['gain'], lw=2),
-             Line2D([0], [0], color=colors_sign['loss'], lw=2)]
-    ax.legend(lines, ['Gain', 'Loss'], loc='upper left', frameon=False)
+    legend_elements = [
+        Line2D([0], [0], color=colors_sign['gain'], lw=4, label='Gain'),
+        Line2D([0], [0], color=colors_sign['loss'], lw=4, label='Loss')
+    ]
+    ax.legend(handles=legend_elements, loc='upper left', frameon=False, fontsize=12)
 
+import pandas as pd
+from statsmodels.stats.anova import AnovaRM
 
+def calculate_main_effect(df):
+    print("\n========== 压力主效应计算 (ANOVA) ==========")
+    
+    # 1. 准备数据：确保包含 participant, block_sign, block_pressure, comp_m
+    # 先计算每个Block的最终IP（取平均）
+    df_ip = df.groupby(['participant', 'block_sign', 'block_pressure'])['comp_m'].mean().reset_index()
+    
+    # 2. 运行重复测量方差分析 (2x2 Design)
+    # depvar: 因变量 (主观等价点 comp_m 或 折扣率 k)
+    # subject: 被试ID
+    # within: 被试内变量 (Sign, Pressure)
+    aov = AnovaRM(
+        data=df_ip, 
+        depvar='comp_m', 
+        subject='participant', 
+        within=['block_sign', 'block_pressure']
+    )
+    res = aov.fit()
+    
+    print(res)
+    
+    # 3. 提取结果
+    # 你会看到一个表格，找到 'block_pressure' 这一行
+    # F Value: 效应量统计值
+    # Pr > F: P值 (如果 < 0.05 就是显著)
+
+# 调用函数
+# calculate_main_effect(df)
 if __name__ == '__main__':
     run_plotting()
