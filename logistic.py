@@ -1,337 +1,276 @@
 #!/usr/bin/env python3
-# attribute_sensitivity_auto.py (modified: add interaction checks)
-# 直接运行即可：将所有数据 csv 放到 ./data/ 下，脚本会自动读取并显示结果与图（不保存文件）。
+"""
+logistic_rt_interaction.py
 
-import os
-import glob
+说明：
+- 将 ./data/ 下所有 CSV 合并（每个 CSV 包含 participant 的多次试次）
+- 自动识别列：comp_m (Amount), rt (reaction time), chose_delayed (binary choice),
+  participant (subject), block_pressure (condition)
+- NOTE: Delay (7 days) 是常数 — 因为固定不变，无法用于回归估计敏感度；
+  本脚本不把“延迟”当作解释变量，而把 rt 视为反应时间作为协变量。
+- 输出：pooled logistic, per-condition logistic, GEE, 并做 RT × Condition 交互检验
+- 直接在控制台显示结果（不保存文件）
+"""
+import os, glob
 import pandas as pd
 import numpy as np
 import statsmodels.formula.api as smf
 import statsmodels.api as sm
 from statsmodels.genmod.generalized_estimating_equations import GEE
 from statsmodels.genmod.families import Binomial
-import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler
 import warnings
 warnings.filterwarnings("ignore")
 
-# ------------------------
-# 配置（如需改为标准化可把下面设为 True）
-# ------------------------
-DATA_DIR = 'data'
-STANDARDIZE = True  # 是否对 Amount / Time 做 z-score 标准化
-MIN_N_PER_COND = 10  # 每条件最小样本量，否则跳过按条件拟合
+DATA_DIR = "data"
+STANDARDIZE = True     # 将 Amount 和 RT 标准化（推荐）
+MIN_N_PER_COND = 8     # 每条件最小样本量以进行按条件拟合
 
-# ------------------------
-# 列自动匹配规则（优先级匹配）
-# ------------------------
-EXPECTED_NAMES = {
-    'amount': ['comp_m', 'thisrow.t', 'amount', 'amt', 'comp'],
-    'time': ['rt', 'time', 'delay', 'latency', 'thisrow.t'],
-    'choice': ['chose_delayed', 'choice', 'chose', 'resp', 'response'],
-    'subject': ['participant', 'subject', 'subj', 'pid', 'participant_id'],
+# expected candidates
+EXPECTED = {
+    'amount': ['comp_m', 'amount', 'comp'],
+    'rt': ['rt', 'reaction', 'reaction_time', 'response_time'],
+    'choice': ['chose_delayed', 'choice', 'chose', 'resp'],
+    'subject': ['participant', 'subject', 'subj', 'pid'],
     'condition': ['block_pressure', 'pressure', 'cond', 'condition', 'block']
 }
 
-def find_first_match(columns, candidates):
-    cols_lower = {c.lower(): c for c in columns}
+def find_col(cols, candidates):
+    lower = {c.lower(): c for c in cols}
     for cand in candidates:
-        if cand.lower() in cols_lower:
-            return cols_lower[cand.lower()]
+        if cand.lower() in lower:
+            return lower[cand.lower()]
     # substring match
     for cand in candidates:
-        for lower, orig in cols_lower.items():
-            if cand.lower() in lower:
+        for lc, orig in lower.items():
+            if cand.lower() in lc:
                 return orig
     return None
 
-def auto_detect_cols(df):
+def auto_detect(df):
     cols = list(df.columns)
-    detected = {}
-    detected['choice'] = find_first_match(cols, EXPECTED_NAMES['choice'])
-    detected['amount'] = find_first_match(cols, EXPECTED_NAMES['amount'])
-    detected['time'] = find_first_match(cols, EXPECTED_NAMES['time'])
-    detected['subject'] = find_first_match(cols, EXPECTED_NAMES['subject'])
-    detected['condition'] = find_first_match(cols, EXPECTED_NAMES['condition'])
-    return detected
+    return {
+        'amount': find_col(cols, EXPECTED['amount']),
+        'rt': find_col(cols, EXPECTED['rt']),
+        'choice': find_col(cols, EXPECTED['choice']),
+        'subject': find_col(cols, EXPECTED['subject']),
+        'condition': find_col(cols, EXPECTED['condition'])
+    }
 
-# ------------------------
-# 数据准备
-# ------------------------
-def prepare_df(df, detected, standardize=False):
-    df2 = df.copy()
-    # Choice -> 0/1
-    if detected['choice'] is None:
-        raise ValueError("未能自动识别 Choice 列，请确认 CSV 列头中包含 'chose_delayed' 或类似名称。")
-    ch = df2[detected['choice']]
+def prepare(df, detected, standardize=True):
+    d = df.copy()
+    # choice -> 0/1
+    chcol = detected['choice']
+    if chcol is None:
+        raise RuntimeError("未识别到 choice 列，请确保包含 'chose_delayed' 或类似列。")
+    ch = d[chcol]
     if pd.api.types.is_bool_dtype(ch):
-        df2['_Choice'] = ch.astype(int)
+        d['_Choice'] = ch.astype(int)
     elif pd.api.types.is_numeric_dtype(ch):
         uniq = sorted(ch.dropna().unique())
         if set(uniq) <= {0,1}:
-            df2['_Choice'] = ch.astype(int)
+            d['_Choice'] = ch.astype(int)
         elif len(uniq) == 2:
-            mapping = {uniq[0]: 0, uniq[1]: 1}
-            df2['_Choice'] = ch.map(mapping)
+            mapping = {uniq[0]:0, uniq[1]:1}
+            d['_Choice'] = ch.map(mapping)
         else:
-            df2['_Choice'] = (ch > ch.median()).astype(int)
+            d['_Choice'] = (ch > ch.median()).astype(int)
     else:
         vals = ch.astype(str)
         top = vals.value_counts().index.tolist()
         if len(top) >= 2:
-            mapping = {top[0]: 1, top[1]: 0}  # 众数映射为 1
-            df2['_Choice'] = vals.map(lambda x: mapping.get(x, np.nan))
+            mapping = {top[0]:1, top[1]:0}   # mode -> 1
+            d['_Choice'] = vals.map(lambda x: mapping.get(x, np.nan))
         else:
-            df2['_Choice'] = vals.map(lambda x: 1 if x == top[0] else np.nan)
+            d['_Choice'] = vals.map(lambda x: 1 if x==top[0] else np.nan)
 
-    # Amount / Time -> numeric
-    amt_col = detected['amount']
-    time_col = detected['time']
-    if amt_col is None and time_col is None:
-        raise ValueError("未识别到 Amount 或 Time 列（期望 comp_m / thisRow.t / rt 等）。")
-    df2['_Amount'] = pd.to_numeric(df2[amt_col], errors='coerce') if amt_col is not None else np.nan
-    df2['_Time'] = pd.to_numeric(df2[time_col], errors='coerce') if time_col is not None else np.nan
+    # amount and rt numeric
+    amtcol = detected['amount']
+    rtcol = detected['rt']
+    if amtcol is None:
+        raise RuntimeError("未识别到金额列（comp_m）。")
+    if rtcol is None:
+        raise RuntimeError("未识别到反应时间列（rt）。")
 
-    # subject / condition
-    subj_col = detected['subject']
-    cond_col = detected['condition']
-    df2['_Subject'] = df2[subj_col].astype(str) if (subj_col is not None and subj_col in df2.columns) else df2.index.astype(str)
-    df2['_Cond'] = df2[cond_col].astype(str).fillna('NA') if (cond_col is not None and cond_col in df2.columns) else 'NA'
+    d['_Amount'] = pd.to_numeric(d[amtcol], errors='coerce')
+    d['_RT'] = pd.to_numeric(d[rtcol], errors='coerce')
 
-    # drop NA
-    df2 = df2.dropna(subset=['_Choice', '_Amount', '_Time']).copy()
+    # subject & condition
+    subjcol = detected['subject']
+    condcol = detected['condition']
+    d['_Subject'] = d[subjcol].astype(str) if (subjcol and subjcol in d.columns) else d.index.astype(str)
+    d['_Cond'] = d[condcol].astype(str).fillna('NA') if (condcol and condcol in d.columns) else 'NA'
 
-    # standardize optional
+    # drop missing
+    d = d.dropna(subset=['_Choice','_Amount','_RT']).copy()
+
+    # standardize if requested
     if standardize:
         scaler = StandardScaler()
-        df2[['_Amount_z', '_Time_z']] = scaler.fit_transform(df2[['_Amount', '_Time']])
-        df2['_Amount_model'] = df2['_Amount_z']
-        df2['_Time_model'] = df2['_Time_z']
+        d[['_Amount_z','_RT_z']] = scaler.fit_transform(d[['_Amount','_RT']])
+        d['_Amount_model'] = d['_Amount_z']
+        d['_RT_model'] = d['_RT_z']
     else:
-        df2['_Amount_model'] = df2['_Amount']
-        df2['_Time_model'] = df2['_Time']
+        d['_Amount_model'] = d['_Amount']
+        d['_RT_model'] = d['_RT']
 
-    return df2
+    return d
 
-# ------------------------
-# 模型拟合与输出
-# ------------------------
-def fit_pooled_logit(df):
-    formula = "_Choice ~ _Amount_model + _Time_model"
-    model = smf.logit(formula=formula, data=df).fit(disp=False, maxiter=200)
-    return model
+def fit_logit(formula, df):
+    return smf.logit(formula=formula, data=df).fit(disp=False, maxiter=200)
 
-def fit_logit_by_condition(df):
-    res = {}
-    for cond, sub in df.groupby('_Cond'):
-        if sub.shape[0] < MIN_N_PER_COND:
-            res[cond] = None
-            continue
-        try:
-            res[cond] = smf.logit(formula="_Choice ~ _Amount_model + _Time_model", data=sub).fit(disp=False, maxiter=200)
-        except Exception as e:
-            res[cond] = e
-    return res
+def fit_gee(formula, df, group='_Subject'):
+    return GEE.from_formula(formula, groups=group, data=df, family=Binomial(), cov_struct=sm.cov_struct.Exchangeable()).fit()
 
-def fit_gee_by_subject(df):
-    df['_Cond_cat'] = df['_Cond'].astype('category')
-    formula = "_Choice ~ _Amount_model + _Time_model + _Cond_cat"
-    model = GEE.from_formula(formula, groups="_Subject", data=df, family=Binomial(), cov_struct=sm.cov_struct.Exchangeable())
-    res = model.fit()
-    return res
-
-def summarize_and_print(result, name):
+def summarize(result, name):
     if result is None:
-        print(f"\n{name}: 无可用结果（None）")
+        print(f"{name}: No result")
         return
     if isinstance(result, Exception):
-        print(f"\n{name}: 拟合出错 -> {result}")
+        print(f"{name}: error -> {result}")
         return
-    print(f"\n=== {name} summary ===")
+    print(f"\n=== {name} ===")
     try:
         print(result.summary())
     except Exception:
-        print("无法打印 summary()，但是会打印主要系数：")
-    # 报告 alpha / beta
+        pass
     params = result.params
-    alpha = params.get('Intercept', params.index[0] and params.iloc[0])
-    beta_a = params.get('_Amount_model', np.nan)
-    beta_t = params.get('_Time_model', np.nan)
-    print(f"\n{name} coefficients (log-odds):")
-    print(f"  alpha (Intercept) = {float(alpha):.6f}")
-    print(f"  beta_amount (_Amount_model) = {float(beta_a):.6f}")
-    print(f"  beta_time   (_Time_model) = {float(beta_t):.6f}")
-    # 若有置信区间与 OR
+    alpha = params.get('Intercept', params.iloc[0])
+    b_amt = params.get('_Amount_model', np.nan)
+    b_rt = params.get('_RT_model', np.nan)
+    print(f"\n{name} coefficients (log-odds): alpha={alpha:.6f}, beta_amount={b_amt:.6f}, beta_RT={b_rt:.6f}")
     try:
         conf = result.conf_int()
-        ci_a = conf.loc['Intercept'].values if 'Intercept' in conf.index else conf.iloc[0].values
-        ci_amt = conf.loc['_Amount_model'].values if '_Amount_model' in conf.index else [np.nan, np.nan]
-        ci_time = conf.loc['_Time_model'].values if '_Time_model' in conf.index else [np.nan, np.nan]
-        or_a = np.exp(alpha)
-        or_amt = np.exp(beta_a)
-        or_time = np.exp(beta_t)
-        print("\n  95% CI (log-odds):")
-        print(f"    alpha CI = ({ci_a[0]:.4f}, {ci_a[1]:.4f})")
-        print(f"    amount CI = ({ci_amt[0]:.4f}, {ci_amt[1]:.4f})")
-        print(f"    time CI = ({ci_time[0]:.4f}, {ci_time[1]:.4f})")
-        print("\n  Odds ratios (OR):")
-        print(f"    OR_alpha = {or_a:.4f}")
-        print(f"    OR_amount = {or_amt:.4f}")
-        print(f"    OR_time = {or_time:.4f}")
+        def ci(term): 
+            if term in conf.index:
+                return conf.loc[term].values
+            return (np.nan, np.nan)
+        ca = ci('_Amount_model'); cr = ci('_RT_model'); ci_a = ci('Intercept')
+        print(f"  95% CI intercept={ci_a}, amount={ca}, RT={cr}")
+        print(f"  OR_amount={np.exp(b_amt):.4f}, OR_RT={np.exp(b_rt):.4f}")
     except Exception:
         pass
-    # McFadden pseudo R2 if available
     try:
         pseudo = 1 - result.llf / result.llnull
-        print(f"\n  McFadden pseudo-R² = {pseudo:.4f}")
+        print(f"  McFadden pseudo-R^2 = {pseudo:.4f}")
     except Exception:
         pass
 
-# ------------------------
-# Interaction detection helper
-# ------------------------
-def interpret_time_interaction(result, result_name):
-    """
-    尝试找到包含 '_Time_model' 且包含 'no_pressure' 的交互项名并自动解读。
-    若找不到交互项，会在控制台说明。
-    """
+def interpret_interaction(result, result_name, factor_name='_RT_model'):
     if result is None or isinstance(result, Exception):
-        print(f"\n{result_name}: 无结果可解读交互项。")
+        print(f"{result_name}: no result to interpret")
         return
     params = result.params
-    pvals = None
-    try:
-        pvals = result.pvalues
-    except Exception:
-        pvals = None
-
-    # 在参数名中寻找交互项（不依赖确切分隔符）
-    inter_terms = [t for t in params.index if ('_Time_model' in t and ('no_pressure' in t or 'No_pressure' in t or 'noPressure' in t))]
-    # 如果没找到，也尝试找 _Time_model: 之后的任何 Cond 类别差异项
+    pvals = getattr(result, "pvalues", None)
+    # find interaction term name containing RT_model and no_pressure (or second category)
+    inter_terms = [t for t in params.index if (factor_name in t and ('no_pressure' in t or 'No_pressure' in t or 'noPressure' in t))]
     if not inter_terms:
-        inter_terms = [t for t in params.index if ('_Time_model' in t and ':' in t and '_Cond' in t)]
+        inter_terms = [t for t in params.index if (factor_name in t and ':' in t and '_Cond' in t)]
     if not inter_terms:
-        print(f"\n{result_name}: 未找到显式的 Time×Condition 交互项（参数名列表中没有包含 '_Time_model' 与 condition 的项）。")
+        print(f"{result_name}: interaction term not found.")
         return
-
-    tname = inter_terms[0]
-    coef = params[tname]
-    p = pvals[tname] if pvals is not None and tname in pvals.index else None
-    print(f"\n{result_name} found interaction term '{tname}': coef = {coef:.4f}, p = {p}")
+    t = inter_terms[0]
+    coef = params[t]
+    p = pvals[t] if (pvals is not None and t in pvals.index) else None
+    print(f"\n{result_name} interaction term '{t}': coef={coef:.4f}, p={p}")
     if p is not None:
         if p < 0.05:
             if coef > 0:
-                print("  解释：交互项显著且为正 → 在 no_pressure 下 Time 的效应比在 high_pressure 下更强 ⇒ 支持 “high_pressure 下 Time 敏感度减弱（属性窄化）”。")
+                print("  结论：交互为正且显著 → no_pressure 下 RT 的效应比 high_pressure 大 → 支持 high_pressure 下 RT 敏感度减弱（属性窄化）。")
             else:
-                print("  解释：交互项显著且为负 → 在 no_pressure 下 Time 的效应比在 high_pressure 下更弱 ⇒ 与属性窄化相反。")
+                print("  结论：交互为负且显著 → no_pressure 下 RT 的效应比 high_pressure 小 → 与属性窄化相反。")
         else:
-            print("  解释：交互项不显著（p >= 0.05）→ 无证据表明压力改变了 Time 的敏感度（不能支持属性窄化）。")
+            print("  结论：交互不显著 → 无证据显示压力改变了对 RT 的敏感度。")
     else:
-        print("  无 p 值可用；请手动检查 summary() 中该项的置信区间与显著性。")
+        print("  无 p 值；请检查 summary() 输出。")
 
-# ------------------------
-# 入口
-# ------------------------
 def main():
-    # 查找 CSV
     files = glob.glob(os.path.join(DATA_DIR, "*.csv"))
-    if len(files) == 0:
-        print(f"目录 {DATA_DIR} 中未找到 CSV 文件，请把 CSV 放到该目录后重试。")
+    if not files:
+        print("data 文件夹下未找到 CSV 文件。请把 CSV 放入 ./data/ 然后重试。")
         return
-
-    # 读取并合并
     dfs = []
     for f in files:
         try:
-            d = pd.read_csv(f)
-            d['_source_file'] = os.path.basename(f)
-            dfs.append(d)
+            df = pd.read_csv(f)
+            df['_src'] = os.path.basename(f)
+            dfs.append(df)
         except Exception as e:
-            print(f"读取文件 {f} 失败：{e}")
+            print(f"读取 {f} 失败：{e}")
     full = pd.concat(dfs, ignore_index=True, sort=False)
     print(f"已加载 {len(files)} 个 CSV，合并后 shape = {full.shape}")
     print("列名列表：", list(full.columns))
 
-    # 自动检测列
-    detected = auto_detect_cols(full)
-    print("\n自动识别的列（None 表示未找到）：")
-    for k, v in detected.items():
+    detected = auto_detect(full)
+    print("\n自动识别列（None 表示未找到）:")
+    for k,v in detected.items():
         print(f"  {k}: {v}")
 
-    # 准备数据
-    try:
-        work = prepare_df(full, detected, standardize=STANDARDIZE)
-    except Exception as e:
-        print("准备数据失败：", e)
-        return
-
+    # Prepare
+    work = prepare(full, detected, standardize=STANDARDIZE)
+    print("\n注意：延迟（delay）为实验固定值 7 天，不作为回归变量（常数）。")
     print("\n各条件样本量：")
     print(work['_Cond'].value_counts().to_string())
 
-    # 拟合 pooled logistic
+    # set categorical order: prefer 'high_pressure' as baseline if present
+    uniq = list(work['_Cond'].unique())
+    if 'high_pressure' in uniq:
+        cats = ['high_pressure'] + [c for c in uniq if c != 'high_pressure']
+    else:
+        cats = uniq
+    work['_Cond_cat'] = pd.Categorical(work['_Cond'], categories=cats)
+
+    # pooled logistic (Amount + RT)
     pooled = None
     try:
-        pooled = fit_pooled_logit(work)
-        summarize_and_print(pooled, "Pooled Logistic")
+        pooled = fit_logit("_Choice ~ _Amount_model + _RT_model", work)
+        summarize(pooled, "Pooled Logistic (Amount + RT)")
     except Exception as e:
         print("Pooled logistic 拟合失败：", e)
 
-    # 按 condition 拟合
-    cond_models = fit_logit_by_condition(work)
-    for cond, res in cond_models.items():
-        if res is None:
-            print(f"\nCondition '{cond}': 样本量 < {MIN_N_PER_COND} 或已跳过。")
-        elif isinstance(res, Exception):
-            print(f"\nCondition '{cond}': 拟合异常 -> {res}")
-        else:
-            summarize_and_print(res, f"Logit (cond={cond})")
+    # per-condition
+    cond_models = {}
+    for cond, sub in work.groupby('_Cond'):
+        if len(sub) < MIN_N_PER_COND:
+            cond_models[cond] = None
+            print(f"Condition {cond}: N={len(sub)} < {MIN_N_PER_COND}，跳过按条件拟合。")
+            continue
+        try:
+            m = fit_logit("_Choice ~ _Amount_model + _RT_model", sub)
+            cond_models[cond] = m
+            summarize(m, f"Logit (cond={cond})")
+        except Exception as e:
+            cond_models[cond] = e
+            print(f"Condition {cond} 拟合失败：", e)
 
-    # GEE by subject (main effects)
+    # GEE (population-averaged) main effects
     gee = None
     try:
-        gee = fit_gee_by_subject(work)
-        summarize_and_print(gee, "GEE by Subject")
+        gee = fit_gee("_Choice ~ _Amount_model + _RT_model + _Cond_cat", work, group='_Subject')
+        summarize(gee, "GEE by Subject (main effects)")
     except Exception as e:
         print("GEE 拟合失败：", e)
 
-    # --------------------------
-    # 交互检测（Time × Condition）
-    # --------------------------
-    # 先把 Condition 设为 category，并尽量把 'high_pressure' 放在第一个（reference）
+    # Interaction tests: RT × Condition
+    print("\n=== Interaction test: RT × Condition ===")
+    pooled_inter = None; gee_inter = None
     try:
-        unique_conds = list(work['_Cond'].astype(str).unique())
-        if 'high_pressure' in unique_conds:
-            cats = ['high_pressure'] + [c for c in unique_conds if c != 'high_pressure']
-        else:
-            cats = unique_conds
-        work['_Cond_cat'] = pd.Categorical(work['_Cond'], categories=cats)
-    except Exception:
-        work['_Cond_cat'] = work['_Cond'].astype('category')
-
-    print("\n=== Interaction tests: Time × Condition ===")
-    # pooled interaction
-    try:
-        pooled_inter = smf.logit(formula = "_Choice ~ _Amount_model + _Time_model * _Cond_cat", data=work).fit(disp=False, maxiter=200)
-        print("\n--- Pooled logistic with interaction ---")
-        print(pooled_inter.summary())
-        interpret_time_interaction(pooled_inter, "Pooled_interaction")
+        pooled_inter = fit_logit("_Choice ~ _Amount_model + _RT_model * _Cond_cat", work)
+        summarize(pooled_inter, "Pooled Logistic (with RT × Condition)")
+        interpret_interaction(pooled_inter, "Pooled_interaction")
     except Exception as e:
         print("Pooled interaction 拟合失败：", e)
-        pooled_inter = None
-
-    # GEE interaction
     try:
-        gee_inter = GEE.from_formula("_Choice ~ _Amount_model + _Time_model * _Cond_cat",
-                                    groups="_Subject", data=work, family=Binomial(),
-                                    cov_struct=sm.cov_struct.Exchangeable()).fit()
-        print("\n--- GEE with interaction ---")
-        print(gee_inter.summary())
-        interpret_time_interaction(gee_inter, "GEE_interaction")
+        gee_inter = fit_gee("_Choice ~ _Amount_model + _RT_model * _Cond_cat", work, group='_Subject')
+        summarize(gee_inter, "GEE (with RT × Condition)")
+        interpret_interaction(gee_inter, "GEE_interaction")
     except Exception as e:
         print("GEE interaction 拟合失败：", e)
-        gee_inter = None
 
-    print("\n全部分析完成（在控制台显示输出，未保存任何文件）。")
+    print("\n注意与结论提示：")
+    print(" - Delay=7天为常数，无法纳入回归作为解释变量。")
+    print(" - 若你想检验压力是否改变对延迟（delay）的敏感度，需设计不同延迟值的试次（delay must vary）。")
+    print(" - 当前脚本检验的是压力是否改变对 Reaction Time (rt) 的敏感度（RT × Condition 交互）。")
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
