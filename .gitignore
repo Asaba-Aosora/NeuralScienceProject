@@ -1,2 +1,6 @@
-data
+data/prev
 .vscode
+*/*.psydat
+figs
+*.pdf
+*.png
