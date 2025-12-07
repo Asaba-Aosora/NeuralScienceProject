@@ -129,12 +129,12 @@ def generate_mock_data(n_subs=20):
 def run_plotting():
     df = load_data()
 
-    # 这里是单独的被试ID
-    target_participant = 941765  # 替换为你想分析的被试ID
-    df = df[df['participant'] == target_participant].copy()
-    if df.empty:
-        print(f"警告：未找到被试 {target_participant} 的数据！")
-        return
+    # # 这里是单独的被试ID
+    # target_participant = 941765  # 替换为你想分析的被试ID
+    # df = df[df['participant'] == target_participant].copy()
+    # if df.empty:
+    #     print(f"警告：未找到被试 {target_participant} 的数据！")
+    #     return
 
     # --- Pre-calculation ---
     # 1. Calculate IP (Indifference Point)
