@@ -271,7 +271,7 @@ class MouseTrajectoryAnalyzer:
             print(f"冲突指数与反应时关系图已保存至 {save_path}")
         plt.show()
 
-# 使用示例
+
 if __name__ == "__main__":
     analyzer = MouseTrajectoryAnalyzer(data_path="./data")
     
