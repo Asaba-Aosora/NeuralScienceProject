@@ -228,8 +228,8 @@ class MouseTrajectoryAnalyzer:
             interaction = stats.f_oneway(gain_no, gain_high, loss_no, loss_high)
             
             print(f"  Sign主效应: F={sign_effect.statistic:.3f}, p={sign_effect.pvalue:.4f}")
-            print(f"  Pressure主效应: F={pressure_effect.statistic:.3f}, p={pressure_effect.pvalue:.4f}")
-            print(f"  交互效应: F={interaction.statistic:.3f}, p={interaction.pvalue:.4f}")
+            print(f"  Pressure主效应: F={pressure_effect.statistic:.3f}, p={pressure_effect.pvalue:.12f}")
+            print(f"  交互效应: F={interaction.statistic:.3f}, p={interaction.pvalue:.8f}")
     
     def plot_metric_comparison(self, metric, save_path=None):
         """绘制不同条件下特定指标的比较图"""
