@@ -1,9 +1,5 @@
 """
 Project: Trajectory of Hesitation - Advanced Analysis
-Changes:
-1. All text converted to English for publication standards.
-2. Direct plotting (plt.show) instead of saving.
-3. Added 3 new analytical plots (Psychometric, RT Dist, MD-RT Correlation).
 """
 
 import pandas as pd
@@ -13,8 +9,7 @@ import seaborn as sns
 import glob
 import os
 import warnings
-from scipy.stats import gaussian_kde  # 用于密度计算
-from scipy.stats import gaussian_kde  # 用于密度计算
+from scipy.stats import gaussian_kde  
 warnings.filterwarnings('ignore')
 
 #显示设置
@@ -52,69 +47,7 @@ def load_data():
                 clean_df['chose_delayed_int'] = clean_df['chose_delayed'].astype(int)
             return clean_df
 
-    print("No data found or load failed. Generating MOCK DATA for demonstration...")
-    return generate_mock_data()
-
-
-def generate_mock_data(n_subs=20):
-    # 生成模拟数据
-    np.random.seed(42)
-    data = []
-    for sub in range(1, n_subs + 1):
-        for sign in ['gain', 'loss']:
-            for pressure in ['no_pressure', 'high_pressure']:
-                #模拟真实IP
-                #高压会让收益情境的IP下降（更冲动），损失情境的IP保持稳定或上升
-                true_ip = 85 if sign == 'gain' and pressure == 'no_pressure' else \
-                    60 if sign == 'gain' and pressure == 'high_pressure' else \
-                        75  # Loss
-                true_ip += np.random.normal(0, 5)  #个体差异加上
-
-                curr_m = 50
-                for t in range(12):  # 每个区块12试次
-                    #计算价值差
-                    sv_std = true_ip
-                    val_diff = (sv_std - curr_m) if sign == 'gain' else (curr_m - sv_std)  # Adjust for loss direction
-
-                    # 用Sigmoid 计算选择概率
-                    sensitivity = 0.15 if pressure == 'no_pressure' else 0.08  # Pressure blunts sensitivity
-                    prob_delay = 1 / (1 + np.exp(-val_diff * sensitivity))
-                    choice = 1 if np.random.rand() < prob_delay else 0
-
-                    # 模拟反应时（基于漂移扩散模型）
-                    difficulty = abs(val_diff)
-                    base_rt = 0.8 if pressure == 'no_pressure' else 0.4  # Collapsed bound
-                    rt = base_rt + 1.0 * np.exp(-difficulty / 15) + np.random.gamma(2, 0.1)
-                    if pressure == 'high_pressure': rt = min(rt, 1.8)
-
-                    # 模拟最大偏离度（运动冲突）
-                    # 越难的试次（价值差小）最大偏离度越大
-                    base_md = 0.1
-                    md = base_md + 0.3 * np.exp(-difficulty / 10) + np.random.normal(0, 0.02)
-                    if sign == 'loss': md += 0.1  # Loss --更多冲突
-
-                    # 模拟轨迹（简单的曲线生成）
-                    # 根据最大偏离度创建弧形轨迹
-                    xs = np.linspace(0, 0.4, 20)
-                    ys = np.linspace(0, 0.3, 20)
-                    # 加曲率
-                    ys += np.sin(np.linspace(0, np.pi, 20)) * md
-                    traj_str = ";".join([f"{x:.3f},{y:.3f}" for x, y in zip(xs, ys)])
-
-                    data.append({
-                        'participant': sub, 'block_sign': sign, 'block_pressure': pressure,
-                        'comp_m': curr_m, 'rt': rt, 'chose_delayed_int': choice,
-                        'max_deviation': md, 'raw_trajectory': traj_str
-                    })
-
-                    # PEST调整
-                    step = 20 / (t + 1) ** 0.5
-                    if sign == 'gain':
-                        curr_m += step if choice else -step
-                    else:
-                        curr_m -= step if choice else -step
-
-    return pd.DataFrame(data)
+    print("No data found or load failed. ")
 
 
 
@@ -198,7 +131,7 @@ def run_plotting():
     plt.show()
 
     # Figure 4: Psychometric Curve (Sensitivity Analysis)
-    # 意义：展示选择概率如何随价值差变化。高压组斜率更平，说明敏感度下降。
+    # 展示选择概率如何随价值差变化。高压组斜率更平，说明敏感度下降。
     plt.figure(figsize=(10, 6))
 
     # Using lmplot logic manually for better control
@@ -219,7 +152,7 @@ def run_plotting():
     plt.show()
 
     # Figure 5: RT Distribution (Collapsed Bound Evidence)
-    # 意义：直观展示高压如何把RT分布“挤压”到左侧。
+    # 直观展示高压如何把RT分布“挤压”到左侧。
     plt.figure(figsize=(9, 6))
 
     sns.kdeplot(data=df_merged, x='rt', hue='block_pressure', fill=True, common_norm=False,
@@ -237,7 +170,7 @@ def run_plotting():
     plt.show()
 
     # Figure 6: Motor-Decision Correlation (MD vs RT)
-    # 意义：验证“思维泄露”。越难的决策(RT长)，手抖得越厉害(MD大)。
+    # 验证“思维泄露”。越难的决策(RT长)，手抖得越厉害(MD大)。
     g = sns.jointplot(data=df_merged, x="rt", y="max_deviation", hue="block_pressure",
                       palette=colors_pressure, alpha=0.4, height=8)
 
@@ -245,85 +178,6 @@ def run_plotting():
     g.set_axis_labels("Reaction Time (s)", "Max Deviation (Curvature)")
     plt.show()
 
-
-
-# 热力图绘制辅助函数
-def plot_traj_heatmap(df, press_cond, ax, title):
-    sub_df = df[df['block_pressure'] == press_cond]
-    # 收集所有情境的轨迹点
-    points_gain = {'x': [], 'y': []}
-    points_loss = {'x': [], 'y': []}
-    
-    count = 0
-    for idx, row in sub_df.iterrows():
-        try:
-            # 解析
-            points = str(row['raw_trajectory']).split(';')
-            xs = [float(p.split(',')[0]) for p in points]
-            ys = [float(p.split(',')[1]) for p in points]
-        except:
-            continue
-        if len(xs) < 2:
-            continue
-        
-        # 归一化起始点到(0,0)
-        xs = [x - xs[0] for x in xs]
-        ys = [y - ys[0] for y in ys]
-        # 左选轨迹翻转到右侧
-        if xs[-1] < 0:
-            xs = [-x for x in xs]
-        
-        # 按情境分类存储点
-        if row['block_sign'] == 'gain':
-            points_gain['x'].extend(xs)
-            points_gain['y'].extend(ys)
-        else:
-            points_loss['x'].extend(xs)
-            points_loss['y'].extend(ys)
-        
-        count += 1
-        if count > 150:  # 最多用150个试次，避免数据过多
-            break
-    
-    # 创建网格
-    ax.set_facecolor('#F0F0F0')
-    x_min, x_max = -0.1, 0.5  # 与原坐标轴范围一致
-    y_min, y_max = -0.1, 0.6
-    grid_size = 0.005  # 网格精度（越小越精细）
-    xx, yy = np.mgrid[x_min:x_max:grid_size, y_min:y_max:grid_size]
-    positions = np.vstack([xx.ravel(), yy.ravel()])
-    
-    #计算每个情境的密度并绘制
-    
-    # Gain情境
-    if len(points_gain['x']) > 0:
-        # 组合坐标点
-        gain_data = np.vstack([points_gain['x'], points_gain['y']])
-        # 高斯核密度估计（平滑密度分布）
-        kde_gain = gaussian_kde(gain_data)
-        zz_gain = np.reshape(kde_gain(positions).T, xx.shape)
-        # 绘制热力图（alpha=0.6避免遮挡）
-        im1 = ax.imshow(zz_gain.T, extent=(x_min, x_max, y_min, y_max), 
-                        origin='lower', cmap='YlOrRd', alpha=0.6, aspect='auto')
-    
-    # Loss情境
-    if len(points_loss['x']) > 0:
-        loss_data = np.vstack([points_loss['x'], points_loss['y']])
-        kde_loss = gaussian_kde(loss_data)
-        zz_loss = np.reshape(kde_loss(positions).T, xx.shape)
-        im2 = ax.imshow(zz_loss.T, extent=(x_min, x_max, y_min, y_max), 
-                        origin='lower', cmap='Purples', alpha=0.6, aspect='auto')
-    
-    ax.set_title(title, fontweight='bold')
-    ax.set_xlim(x_min, x_max)
-    ax.set_ylim(y_min, y_max)
-    ax.axis('off')  # 隐藏坐标轴（与原图一致）
-    
-    # 自定义图例（区分gain和loss）
-    from matplotlib.lines import Line2D
-    lines = [Line2D([0], [0], color=colors_sign['gain'], lw=2),
-             Line2D([0], [0], color=colors_sign['loss'], lw=2)]
-    ax.legend(lines, ['Gain', 'Loss'], loc='upper left', frameon=False)
 
 from statsmodels.stats.anova import AnovaRM
 
