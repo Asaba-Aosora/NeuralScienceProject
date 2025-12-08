@@ -6,7 +6,6 @@ import os
 from datetime import datetime, timedelta
 
 #基础设置
-# 确保路径正确
 _thisDir = os.path.dirname(os.path.abspath(__file__))
 os.chdir(_thisDir)
 
@@ -24,7 +23,7 @@ if not dlg.OK: core.quit()
 dateStr = data.getDateStr()
 filename = f"{_thisDir}/data/{expInfo['participant']}_{expName}_{dateStr}"
 
-# 创建 ExperimentHandler (自动保存 .csv)
+# 创建 ExperimentHandler，自动保存 .csv
 thisExp = data.ExperimentHandler(
     name=expName, version='2.0',
     extraInfo=expInfo, runtimeInfo=None,
@@ -33,11 +32,11 @@ thisExp = data.ExperimentHandler(
     dataFileName=filename
 )
 
-# 创建窗口 (全屏, 黑色背景)
+# 创建窗口
 win = visual.Window(
     size=[1024, 768], fullscr=True, screen=0,
     winType='pyglet', color=[0,0,0], colorSpace='rgb',
-    units='height' # 使用相对高度单位 (屏幕高=1.0)
+    units='height' # 相对高度
 )
 win.mouseVisible = False # 初始隐藏鼠标
 
@@ -56,7 +55,6 @@ COLOR_PALETTE = {
 
 # 视觉组件初始化
 
-# 布局 (三角形)
 # 底部 Start 按钮区域
 start_button = visual.Circle(win=win, radius=0.06, pos=(0, -0.4),
                              fillColor='grey', lineColor='white',lineWidth=4)
@@ -86,7 +84,7 @@ intro_text = visual.TextStim(win=win, name='intro',
 block_text = visual.TextStim(win=win, font='SimHei', height=0.05, wrapWidth=1.4)
 end_text = visual.TextStim(win=win, text='实验结束\n数据已保存', font='SimHei', height=0.05)
 
-# add：退出功能辅助函数
+# 退出功能辅助函数
 def check_for_escape():
     #检查是否按下ESC键，如果按下则退出实验
     keys = event.getKeys(keyList=['escape'])
@@ -149,7 +147,6 @@ def run_experiment():
             waiting_for_start = False
         elif 'escape' in keys:
             check_for_escape()
-        # 轻微延迟以避免CPU过度使用
         core.wait(0.01)
 
     # Block 循环 ---
@@ -158,11 +155,11 @@ def run_experiment():
         curr_pressure = block['pressure']
 
         if curr_sign == 'gain':
-            theme_color = '#FFD700' # 金色
+            theme_color = '#FFD700'
             action = "获得"
             context_str = "【获得】情境"
         else:
-            theme_color = '#CD5C5C' # 印度红
+            theme_color = '#CD5C5C'
             action = "损失"
             context_str = "【损失】情境\n(假设拥有本金)"
 
@@ -173,7 +170,7 @@ def run_experiment():
 
         # 设置时间压力参数
         if curr_pressure == 'high_pressure':
-            time_limit = 2.0 # 鼠标任务需要比按键稍长一点 (2.0s 是恐慌区)
+            time_limit = 2.0
             pressure_str = "【限时 2.0秒！】"
             bar_opacity = 1
         else:
@@ -187,7 +184,6 @@ def run_experiment():
         block_text.draw()
         win.flip()
         
-        # 修改等待按键的逻辑，添加ESC检查
         waiting_for_block_start = True
         while waiting_for_block_start:
             keys = event.getKeys(keyList=['space', 'escape'])
@@ -206,12 +202,11 @@ def run_experiment():
         max_reversals = 6
         prev_choice_is_std = None
 
-        # Trial 循环 (PEST) 
+        # Trial 循环: PEST算法
         trial_count = 0
         while pest_reversals < max_reversals:
             trial_count += 1
             
-            # 检查ESC键
             check_for_escape()
 
             # A. 准备刺激文本 
@@ -236,11 +231,10 @@ def run_experiment():
             # B. 归位
             # 强制被试点击底部 Start 才能开始，确保每次轨迹起点一致
             mouse.setVisible(True)
-            mouse.setPos((0, -0.4)) # 软复位
+            mouse.setPos((0, -0.4))
             clicked_start = False
 
             while not clicked_start:
-                # 检查ESC键
                 check_for_escape()
                 
                 # 绘制所有静态元素
@@ -259,7 +253,7 @@ def run_experiment():
             traj_y = []
 
             has_responded = False
-            choice_side = None # left or right
+            choice_side = None
             rt = -1
 
             # 倒计时条
@@ -271,7 +265,7 @@ def run_experiment():
                 
                 t = trial_clock.getTime()
 
-                # 记录轨迹 (每帧)
+                # 记录每帧的点，连成轨迹
                 mx, my = mouse.getPos()
                 traj_x.append(mx)
                 traj_y.append(my)
@@ -333,14 +327,14 @@ def run_experiment():
                 thisExp.addData('choice_side', choice_side)
                 thisExp.nextEntry()
 
-                # PEST 逻辑 (核心) 
+                # PEST 逻辑 
                 # 检查反转
                 if prev_choice_is_std is not None:
                     if chose_delayed != prev_choice_is_std:
                         pest_reversals += 1
                         current_step = max(min_step, current_step / 2)
 
-                # 金额调整 (Gain与Loss相反)
+                # 金额调整
                 if curr_sign == 'gain':
                     # 获得: 选延迟 -> 增加即时金额(增加诱惑)
                     if chose_delayed: current_comp_m += current_step
@@ -355,7 +349,7 @@ def run_experiment():
                 prev_choice_is_std = chose_delayed
 
             else:
-                # 超时处理 (不更新PEST，记录空数据)
+                # 超时处理：不更新PEST，记录空数据
                 thisExp.addData('block_sign', curr_sign)
                 thisExp.addData('block_pressure', curr_pressure)
                 thisExp.addData('rt', -1)

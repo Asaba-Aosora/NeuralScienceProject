@@ -1,7 +1,3 @@
-"""
-Project: Trajectory of Hesitation - Advanced Analysis
-"""
-
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -9,13 +5,12 @@ import seaborn as sns
 import glob
 import os
 import warnings
-from scipy.stats import gaussian_kde  
 warnings.filterwarnings('ignore')
 
 #显示设置
 sns.set_theme(style="ticks", context="talk", font_scale=1.1)
 plt.rcParams['font.family'] = 'sans-serif'
-plt.rcParams['font.sans-serif'] = ['Arial', 'DejaVu Sans']  # Standard English fonts
+plt.rcParams['font.sans-serif'] = ['Arial', 'DejaVu Sans']
 
 #颜色设置
 colors_pressure = {'no_pressure': '#1f77b4', 'high_pressure': '#ff7f0e'} 
@@ -62,19 +57,19 @@ def run_plotting():
     df_ip = df.groupby(['participant', 'block_sign', 'block_pressure']).tail(3)
     df_ip_agg = df_ip.groupby(['participant', 'block_sign', 'block_pressure'])['comp_m'].mean().reset_index()
 
-    # Difficulty & Bins
+    # 难度分组
     df_merged = df.merge(df_ip_agg, on=['participant', 'block_sign', 'block_pressure'], suffixes=('', '_final'))
     df_merged['difficulty'] = abs(df_merged['comp_m'] - df_merged['comp_m_final'])
     df_merged['diff_bin'] = pd.cut(df_merged['difficulty'], bins=[-1, 5, 20, 100], labels=['Hard', 'Medium', 'Easy'])
 
-    # 计算Real Value Difference
-    # 估计 Value Diff 
+    # 计算实际价值差
+    # 估计价值差
     df_merged['val_diff_real'] = df_merged['comp_m_final'] - df_merged['comp_m']
 
     print(">>> Generating Plots...")
 
 
-    # Figure 1: Indifference Points (Behavioral Outcome)
+    # 图 1: 无差别点
     plt.figure(figsize=(8, 6))
 
     sns.barplot(x='block_sign', y='comp_m', hue='block_pressure', data=df_ip_agg,
@@ -93,7 +88,7 @@ def run_plotting():
     plt.show()
 
 
-    # Figure 2: Chronometric Function (DDM Mechanism)
+    # 图 2: 反应时和难度的关系
     plt.figure(figsize=(9, 6))
 
     sns.lineplot(x='diff_bin', y='rt', hue='block_pressure', style='block_sign', data=df_merged,
@@ -105,7 +100,6 @@ def run_plotting():
     plt.legend( loc='upper right', bbox_to_anchor=(1.6, 0.8), frameon=False)
     plt.tight_layout(rect=[0, 0, 1.15, 1])  # 调整图形边界留出空间
 
-    # Annotation
     plt.annotate("Collapsed Bound", xy=(0, 0.5), xytext=(0.5, 1.0),
                  arrowprops=dict(facecolor='black', shrink=0.05, alpha=0.5))
 
@@ -114,10 +108,9 @@ def run_plotting():
     plt.show()
 
 
-    # Figure 3: Trajectory Max Deviation (Motor Conflict)
+    # 图 3: 运动轨迹偏差
     plt.figure(figsize=(8, 6))
 
-    # Filter outliers
     df_md = df_merged[df_merged['max_deviation'] < 0.6]
 
     sns.violinplot(x='block_sign', y='max_deviation', hue='block_pressure', data=df_md,
@@ -132,11 +125,10 @@ def run_plotting():
     plt.tight_layout()
     plt.show()
 
-    # Figure 4: Psychometric Curve (Sensitivity Analysis)
+    # 图 4: 心理测量曲线
     # 展示选择概率如何随价值差变化。高压组斜率更平，说明敏感度下降。
     plt.figure(figsize=(10, 6))
 
-    # Using lmplot logic manually for better control
     for press in ['no_pressure', 'high_pressure']:
         subset = df_merged[df_merged['block_pressure'] == press]
         sns.regplot(x='val_diff_real', y='chose_delayed_int', data=subset,
@@ -153,7 +145,7 @@ def run_plotting():
     plt.tight_layout()
     plt.show()
 
-    # Figure 5: RT Distribution (Collapsed Bound Evidence)
+    # 图 5: 反应时分布
     # 直观展示高压如何把RT分布“挤压”到左侧。
     plt.figure(figsize=(9, 6))
 
@@ -171,7 +163,7 @@ def run_plotting():
     plt.tight_layout()
     plt.show()
 
-    # Figure 6: Motor-Decision Correlation (MD vs RT)
+    # 图 6: 运动和决策的相关性
     # 验证“思维泄露”。越难的决策(RT长)，手抖得越厉害(MD大)。
     g = sns.jointplot(data=df_merged, x="rt", y="max_deviation", hue="block_pressure",
                       palette=colors_pressure, alpha=0.4, height=8)
@@ -208,7 +200,7 @@ def calculate_main_effect(df):
         # 筛选当前条件的数据
         df_sign = df_ip[df_ip['block_sign'] == sign].copy()
         
-        # 单因素重复测量方差分析（在当前gain\loss条件下）
+        # 单因素重复测量方差分析（在当前gain/loss条件下）
         try:
             aov_simple = AnovaRM(
                 data=df_sign,
