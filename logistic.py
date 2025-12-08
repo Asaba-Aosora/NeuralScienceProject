@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 logistic_rt_interaction.py
 
