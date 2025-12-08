@@ -87,7 +87,7 @@ def run_plotting():
     plt.ylabel("Indifference Point (Amount)")
     plt.xlabel("Context (Sign)")
     plt.ylim(0, 110)
-    plt.legend(title='Time Pressure', loc='upper right', frameon=False)
+    plt.legend( loc='upper left', frameon=False,prop={'size': 12})
     sns.despine()
     plt.tight_layout()
     plt.show()
@@ -102,7 +102,8 @@ def run_plotting():
     plt.title("Fig 2. Chronometric Function (RT vs Difficulty)", fontweight='bold', pad=15)
     plt.ylabel("Reaction Time (s)")
     plt.xlabel("Decision Difficulty")
-    plt.legend(title='Condition', loc='upper right', bbox_to_anchor=(1.3, 1))
+    plt.legend( loc='upper right', bbox_to_anchor=(1.6, 0.8), frameon=False)
+    plt.tight_layout(rect=[0, 0, 1.15, 1])  # 调整图形边界留出空间
 
     # Annotation
     plt.annotate("Collapsed Bound", xy=(0, 0.5), xytext=(0.5, 1.0),
@@ -125,7 +126,8 @@ def run_plotting():
     plt.title("Fig 3. Motor Conflict: Max Deviation", fontweight='bold', pad=15)
     plt.ylabel("Trajectory Curvature (MD)")
     plt.xlabel("Context")
-    plt.legend(title='Pressure', loc='upper left', frameon=False)
+    plt.legend(loc='center right',bbox_to_anchor=(1.2, 0.6), frameon=False,prop={'size': 12})
+    plt.tight_layout(rect=[0, 0, 1.05, 1])  # 调整图形边界留出空间
     sns.despine()
     plt.tight_layout()
     plt.show()
@@ -158,13 +160,13 @@ def run_plotting():
     sns.kdeplot(data=df_merged, x='rt', hue='block_pressure', fill=True, common_norm=False,
                 palette=colors_pressure, alpha=0.3, linewidth=2)
 
-    plt.axvline(1.5, color='red', linestyle='--', alpha=0.5, label='Time Limit (1.5s)')
+    plt.axvline(2.0, color='red', linestyle='--', alpha=0.5, label='Time Limit (2.0s)')
 
     plt.title("Fig 5. Reaction Time Distributions", fontweight='bold', pad=15)
     plt.xlabel("Reaction Time (s)")
     plt.ylabel("Density")
     plt.xlim(0, 3.0)
-    plt.legend(title='Pressure')
+    plt.legend(title='Pressure',bbox_to_anchor=(1, 0.8), loc='upper right')
     sns.despine()
     plt.tight_layout()
     plt.show()
@@ -181,9 +183,7 @@ def run_plotting():
 
 from statsmodels.stats.anova import AnovaRM
 
-def calculate_main_effect(df):
-    print("\n========== 压力主效应计算 (ANOVA) ==========")
-    
+def calculate_main_effect(df):  
     # 准备数据，先计算每个Block的最终IP（取平均）
     df_ip = df.groupby(['participant', 'block_sign', 'block_pressure'])['comp_m'].mean().reset_index()
     
@@ -196,6 +196,38 @@ def calculate_main_effect(df):
     )
     res = aov.fit()
     
+    # 简单主效应分析：分别在不同gain/loss条件下分析实验条件的影响
+    print("\n========== gain/loss下不同压力的主效应分析 ==========")
+    
+    # 获取所有压力条件
+    sign_diff = df_ip['block_sign'].unique()
+    
+    for sign in sign_diff:
+        print(f"\n在 {sign} 条件下:")
+        
+        # 筛选当前条件的数据
+        df_sign = df_ip[df_ip['block_sign'] == sign].copy()
+        
+        # 单因素重复测量方差分析（在当前gain\loss条件下）
+        try:
+            aov_simple = AnovaRM(
+                data=df_sign,
+                depvar='comp_m',
+                subject='participant',
+                within=['block_pressure']
+            )
+            res_simple = aov_simple.fit()
+            
+            # 提取关键结果
+            if hasattr(res_simple, 'anova_table'):
+                anova_table = res_simple.anova_table
+                F_value = anova_table.loc['block_pressure', 'F Value']
+                p_value = anova_table.loc['block_pressure', 'Pr > F']
+                print(f"  实验条件主效应: F = {F_value:.4f}, p = {p_value:.4f}")
+        except Exception as e:
+            print(f"  分析失败: {e}")
+    
+    print("\n========== 压力主效应计算 (ANOVA) ==========")
     print(res)
     
 
