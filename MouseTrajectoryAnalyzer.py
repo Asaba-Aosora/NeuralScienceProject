@@ -7,7 +7,6 @@ import os
 from matplotlib.patches import Rectangle
 from glob import glob
 
-plt.rcParams["font.family"] = ["SimHei"]
 plt.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
 
 class MouseTrajectoryAnalyzer:
@@ -27,7 +26,7 @@ class MouseTrajectoryAnalyzer:
         else:
             data = pd.read_csv(data_path)
         
-        print(f"成功加载数据，共{len(data)}条有效试次")
+        print(f"Successfully loaded data, total {len(data)} valid trials")
         return data
     
     def preprocess_data(self):
@@ -64,7 +63,7 @@ class MouseTrajectoryAnalyzer:
         # 为双系统理论分析创建指标：冲突指数 = 最大偏离度 × 方向变化次数
         self.df['conflict_index'] = self.df['max_deviation'] * self.df['direction_changes']
         
-        print("数据预处理完成")
+        print("Data preprocessing completed")
     
     def calculate_trajectory_length(self, trajectory):
         """计算轨迹总长度"""
@@ -170,16 +169,16 @@ class MouseTrajectoryAnalyzer:
                 
                 # 绘制
                 ax.plot(mean_traj[:, 0], mean_traj[:, 1], 
-                        label=f"选择{choice_side}", linewidth=2)
+                        label=f"Choose {choice_side}", linewidth=2)
             
             # 绘制起点和目标区域
-            ax.scatter(0, -0.4, color='black', s=100, label='起点')
+            ax.scatter(0, -0.4, color='black', s=100, label='Start')
             ax.add_patch(Rectangle((-0.625, 0.175), 0.45, 0.25, 
                                  fill=False, edgecolor='gray', linestyle='--'))
             ax.add_patch(Rectangle((0.175, 0.175), 0.45, 0.25, 
                                  fill=False, edgecolor='gray', linestyle='--'))
             
-            ax.set_title(f"{sign}情境 - {pressure}")
+            ax.set_title(f"{sign} Scenario - {pressure}")
             ax.set_xlim(-0.8, 0.8)
             ax.set_ylim(-0.5, 0.6)
             ax.set_aspect('equal')
@@ -188,7 +187,7 @@ class MouseTrajectoryAnalyzer:
         plt.tight_layout()
         if save_path:
             plt.savefig(save_path, dpi=300)
-            print(f"平均轨迹图已保存至 {save_path}")
+            print(f"Average trajectories plot saved to {save_path}")
         plt.show()
     
     def analyze_by_condition(self):
@@ -199,13 +198,13 @@ class MouseTrajectoryAnalyzer:
         
         # 按条件分组计算均值和标准差
         results = self.df.groupby(['block_sign', 'block_pressure'])[metrics].agg(['mean', 'std'])
-        print("\n各条件下的轨迹指标均值和标准差：")
+        print("\nMean and standard deviation of trajectory metrics under each condition:")
         print(results.round(4))
         
         # 双因素方差分析：检验sign和pressure的主效应及交互作用
-        print("\n双因素方差分析结果：")
+        print("\nTwo-way ANOVA results:")
         for metric in metrics:
-            print(f"\n指标: {metric}")
+            print(f"\nMetric: {metric}")
             sign_effect = stats.f_oneway(
                 self.df[self.df['block_sign'] == 'gain'][metric].dropna(),
                 self.df[self.df['block_sign'] == 'loss'][metric].dropna()
@@ -227,21 +226,21 @@ class MouseTrajectoryAnalyzer:
             
             interaction = stats.f_oneway(gain_no, gain_high, loss_no, loss_high)
             
-            print(f"  Sign主效应: F={sign_effect.statistic:.3f}, p={sign_effect.pvalue:.4f}")
-            print(f"  Pressure主效应: F={pressure_effect.statistic:.3f}, p={pressure_effect.pvalue:.12f}")
-            print(f"  交互效应: F={interaction.statistic:.3f}, p={interaction.pvalue:.8f}")
+            print(f"  Sign main effect: F={sign_effect.statistic:.3f}, p={sign_effect.pvalue:.4f}")
+            print(f"  Pressure main effect: F={pressure_effect.statistic:.3f}, p={pressure_effect.pvalue:.12f}")
+            print(f"  Interaction effect: F={interaction.statistic:.3f}, p={interaction.pvalue:.8f}")
     
     def plot_metric_comparison(self, metric, save_path=None):
         """绘制不同条件下特定指标的比较图"""
         plt.figure(figsize=(10, 6))
         sns.barplot(x='block_sign', y=metric, hue='block_pressure', data=self.df)
-        plt.title(f'{metric}在不同实验条件下的比较')
-        plt.xlabel('情境类型')
+        plt.title(f'{metric} Comparison under Different Experimental Conditions')
+        plt.xlabel('Scenario Type')
         plt.ylabel(metric)
         
         if save_path:
             plt.savefig(save_path, dpi=300)
-            print(f"{metric}比较图已保存至 {save_path}")
+            print(f"{metric} comparison plot saved to {save_path}")
         plt.show()
     
     def plot_conflict_vs_rt(self, save_path=None):
@@ -250,9 +249,9 @@ class MouseTrajectoryAnalyzer:
         sns.scatterplot(x='rt', y='conflict_index', 
                        hue='block_sign', style='block_pressure',
                        data=self.df)
-        plt.title('反应时与冲突指数的关系')
-        plt.xlabel('反应时 (秒)')
-        plt.ylabel('冲突指数 (最大偏离度 × 方向变化次数)')
+        plt.title('Relationship between Reaction Time and Conflict Index')
+        plt.xlabel('Reaction Time (s)')
+        plt.ylabel('Conflict Index (Max Deviation × Direction Changes)')
         
         # 计算并绘制回归线
         for sign in ['gain', 'loss']:
@@ -268,7 +267,7 @@ class MouseTrajectoryAnalyzer:
         plt.legend()
         if save_path:
             plt.savefig(save_path, dpi=300)
-            print(f"冲突指数与反应时关系图已保存至 {save_path}")
+            print(f"Conflict index vs reaction time plot saved to {save_path}")
         plt.show()
 
 
@@ -283,4 +282,3 @@ if __name__ == "__main__":
     analyzer.plot_metric_comparison("max_deviation", "max_deviation_comparison.png")
     
     analyzer.plot_conflict_vs_rt("conflict_vs_rt.png")
-    
