@@ -18,7 +18,7 @@ plt.rcParams['font.family'] = 'sans-serif'
 plt.rcParams['font.sans-serif'] = ['Arial', 'DejaVu Sans']  # Standard English fonts
 
 #颜色设置
-colors_pressure = {'no_pressure': '#2E86C1', 'high_pressure': "#e15a4b"} 
+colors_pressure = {'no_pressure': '#1f77b4', 'high_pressure': '#ff7f0e'} 
 colors_sign = {'gain': '#F1C40F', 'loss': '#8E44AD'}  
 
 # 数据加载与预处理
