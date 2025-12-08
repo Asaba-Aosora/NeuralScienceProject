@@ -6,9 +6,6 @@ from scipy.stats import norm
 import os
 from glob import glob
 
-plt.rcParams["font.family"] = ["SimHei"]
-plt.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
-
 class EZDiffusionAnalyzer:
     """EZ-Diffusion模型分析器, 用于计算决策阈值等参数并检测阈值塌陷"""
     
@@ -172,11 +169,11 @@ class EZDiffusionAnalyzer:
             marker='o',
             ci=95
         )
-        plt.title('决策阈值 (边界分离) 随试次的变化趋势', fontsize=14)
-        plt.xlabel('试次窗口')
-        plt.ylabel('决策阈值 (a)')
+        plt.title('Decision Threshold (Boundary Separation) Across Trials', fontsize=14)
+        plt.xlabel('Trial Window')
+        plt.ylabel('Decision Threshold (a)')
         plt.axhline(y=0, color='gray', linestyle='--', alpha=0.3)
-        plt.legend(title='实验条件')
+        plt.legend(title='Experimental Condition')
         plt.tight_layout()
         plt.show()
         
@@ -257,16 +254,19 @@ class EZDiffusionAnalyzer:
             y=param,
             hue=split_by
         )
-        plt.title(f'不同实验条件下的{self._get_param_name(param)}', fontsize=14)
-        plt.xlabel('情境类型 (gain/loss) ')
+        plt.title(f'{self._get_param_name(param)} Under Different Experimental Conditions', fontsize=14)
+        plt.xlabel('Context Type (gain/loss)')
         plt.ylabel(self._get_param_name(param))
-        plt.legend(title='压力条件')
+        plt.legend(title='Stress Condition')
         plt.tight_layout()
         plt.show()
     
     def _get_param_name(self, param):
-        """参数中文名称映射"""
-        names = {'a': '决策阈值 (边界分离) ', 'v': '漂移率', 'ter': '非决策时间'}
+        """参数名称映射"""
+        names = {'a': 'Decision Threshold (Boundary Separation)', 
+                'v': 'Drift Rate', 
+                'ter': 'Non-decision Time'}
+
         return names.get(param, param)
 
 # 主程序运行
