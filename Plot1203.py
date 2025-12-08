@@ -130,7 +130,7 @@ def generate_mock_data(n_subs=20):
 def run_plotting():
     df = load_data()
 
-    calculate_main_effect(df)
+    # calculate_main_effect(df)
     
     # --- Pre-calculation ---
     # 1. Calculate IP (Indifference Point)
@@ -364,34 +364,148 @@ def plot_traj_heatmap(df, press_cond, ax, title):
 
 from statsmodels.stats.anova import AnovaRM
 
-def calculate_main_effect(df):
-    print("\n========== 压力主效应计算 (ANOVA) ==========")
-    
-    # 1. 准备数据：确保包含 participant, block_sign, block_pressure, comp_m
-    # 先计算每个Block的最终IP（取平均）
-    df_ip = df.groupby(['participant', 'block_sign', 'block_pressure'])['comp_m'].mean().reset_index()
-    
-    # 2. 运行重复测量方差分析 (2x2 Design)
-    # depvar: 因变量 (主观等价点 comp_m 或 折扣率 k)
-    # subject: 被试ID
-    # within: 被试内变量 (Sign, Pressure)
-    aov = AnovaRM(
-        data=df_ip, 
-        depvar='comp_m', 
-        subject='participant', 
-        within=['block_sign', 'block_pressure']
-    )
-    res = aov.fit()
-    
-    print(res)
-    
-    # 3. 提取结果
-    # 你会看到一个表格，找到 'block_pressure' 这一行
-    # F Value: 效应量统计值
-    # Pr > F: P值 (如果 < 0.05 就是显著)
+
+# ==========================================
+# [NEW] Part: EZ-Diffusion Model Analysis
+# ==========================================
+def calculate_ez_params(rt, correct):
+    """
+    根据 Wagenmakers et al. (2007) 的 EZ-Diffusion 公式计算参数
+    输入:
+        rt: 反应时数组 (秒)
+        correct: 选择是否为延迟选项 (0/1) 或 正确与否
+    输出:
+        v (drift rate), a (threshold), t0 (non-decision time)
+    """
+    if len(rt) < 2: return np.nan, np.nan, np.nan
+
+    # 1. 计算基础统计量
+    mrt = np.mean(rt)  # 平均反应时
+    vrt = np.var(rt, ddof=1)  # 反应时方差
+    pc = np.mean(correct)  # 选择比例 (P_correct)
+
+    # 2. 边界修正 (防止 log(0) 或 log(1) 导致计算错误)
+    if pc == 0: pc = 0.01
+    if pc == 1: pc = 0.99
+    if vrt == 0: return np.nan, np.nan, np.nan
+
+    # 3. 设定缩放系数 (s=0.1 是惯用标准, scaling constant)
+    s = 0.1
+    s2 = s ** 2
+
+    # 4. EZ 公式核心计算
+    logit = np.log(pc / (1 - pc))
+
+    # 计算决策阈值 a (Threshold)
+    # 核心逻辑：方差越小，阈值越低
+    term1 = logit * (pc ** 2 * logit - pc * logit + pc - 0.5)
+    if term1 == 0: return np.nan, np.nan, np.nan
+    x = term1 / vrt
+    v = np.sign(pc - 0.5) * s * (x) ** 0.25  # 漂移率
+
+    a = (s2 * logit) / v  # 阈值
+
+    # 计算非决策时间 t0 (Ter)
+    y = -v * a / s2
+    mdt = (a / (2 * v)) * ((1 - np.exp(y)) / (1 + np.exp(y)))  # 决策时间
+    t0 = mrt - mdt  # 总时间 - 决策时间 = 非决策时间
+
+    # 简单的边界保护
+    if t0 < 0: t0 = 0
+
+    return v, a, t0
+
+
+def run_ez_analysis(df):
+    print("\n>>> Running EZ-Diffusion Analysis...")
+
+    # 1. 对每个被试、每个条件计算参数
+    results = []
+    groups = df.groupby(['participant', 'block_sign', 'block_pressure'])
+
+    for name, group in groups:
+        sub, sign, press = name
+        # 使用 'chose_delayed_int' 作为 "正确" (偏好延迟)
+        v, a, t0 = calculate_ez_params(group['rt'].values, group['chose_delayed_int'].values)
+
+        results.append({
+            'participant': sub,
+            'block_sign': sign,
+            'block_pressure': press,
+            'v': v,  # Drift Rate (Information Quality)
+            'a': a,  # Threshold (Caution)
+            't0': t0  # Non-decision time
+        })
+
+    df_ez = pd.DataFrame(results).dropna()
+
+    # 2. 绘图：核心关注 Threshold (a)
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+
+    # 图 A: 决策阈值 (Threshold a) - 验证“塌陷”
+    sns.barplot(x='block_sign', y='a', hue='block_pressure', data=df_ez,
+                palette=colors_pressure, capsize=0.1, ax=axes[0], alpha=0.9)
+    sns.stripplot(x='block_sign', y='a', hue='block_pressure', data=df_ez,
+                  dodge=True, color='black', alpha=0.4, legend=False, ax=axes[0])
+
+    axes[0].set_title("Fig 8A. Decision Threshold (a)\n(Evidence for Collapsed Bound)", fontweight='bold')
+    axes[0].set_ylabel("Threshold parameter (a)")
+    axes[0].legend(title='Pressure')
+
+    # 统计检验提示
+    axes[0].annotate("High Pressure -> Lower Threshold", xy=(0.5, 0.9), xycoords='axes fraction',
+                     ha='center', color='red', fontweight='bold')
+
+    # 图 B: 漂移率 (Drift Rate v) - 验证“得失不对称”
+    # 漂移率代表了被试觉得“延迟选项有多好”
+    sns.barplot(x='block_sign', y='v', hue='block_pressure', data=df_ez,
+                palette=colors_pressure, capsize=0.1, ax=axes[1], alpha=0.9)
+
+    axes[1].set_title("Fig 8B. Drift Rate (v)\n(Value Valuation Efficiency)", fontweight='bold')
+    axes[1].set_ylabel("Drift Rate (v)")
+    axes[1].legend_.remove()
+
+    plt.tight_layout()
+    plt.show()
+
+    # 输出简单的统计信息
+    print("EZ-Diffusion Average Parameters:")
+    print(df_ez.groupby(['block_pressure'])[['a', 'v', 't0']].mean())
+
+# def calculate_main_effect(df):
+#     print("\n========== 压力主效应计算 (ANOVA) ==========")
+#
+#     # 1. 准备数据：确保包含 participant, block_sign, block_pressure, comp_m
+#     # 先计算每个Block的最终IP（取平均）
+#     df_ip = df.groupby(['participant', 'block_sign', 'block_pressure'])['comp_m'].mean().reset_index()
+#
+#     # 2. 运行重复测量方差分析 (2x2 Design)
+#     # depvar: 因变量 (主观等价点 comp_m 或 折扣率 k)
+#     # subject: 被试ID
+#     # within: 被试内变量 (Sign, Pressure)
+#     aov = AnovaRM(
+#         data=df_ip,
+#         depvar='comp_m',
+#         subject='participant',
+#         within=['block_sign', 'block_pressure']
+#     )
+#     res = aov.fit()
+#
+#     print(res)
+#
+#     # 3. 提取结果
+#     # 你会看到一个表格，找到 'block_pressure' 这一行
+#     # F Value: 效应量统计值
+#     # Pr > F: P值 (如果 < 0.05 就是显著)
 
 # 调用函数
-# calculate_main_effect(df)
+    #calculate_main_effect(df)
 
 if __name__ == '__main__':
+    # 1. 运行之前的绘图逻辑
     run_plotting()
+
+    # 2. 加载数据并运行 EZ-Diffusion 分析
+    df = load_data()  # 重新获取df
+    if df is not None:
+        run_ez_analysis(df)  # <--- 新增这行
