@@ -83,7 +83,7 @@ def run_plotting():
     sns.stripplot(x='block_sign', y='comp_m', hue='block_pressure', data=df_ip_agg,
                   dodge=True, color='black', alpha=0.5, size=5, legend=False)
 
-    plt.title("Fig 1. Effect of Pressure on Indifference Points", fontweight='bold', pad=15)
+    plt.title("Effect of Pressure on Indifference Points", fontweight='bold', pad=15)
     plt.ylabel("Indifference Point (Amount)")
     plt.xlabel("Context (Sign)")
     plt.ylim(0, 110)
@@ -99,7 +99,7 @@ def run_plotting():
     sns.lineplot(x='diff_bin', y='rt', hue='block_pressure', style='block_sign', data=df_merged,
                  palette=colors_pressure, markers=True, linewidth=3, ms=10, err_style='bars')
 
-    plt.title("Fig 2. Chronometric Function (RT vs Difficulty)", fontweight='bold', pad=15)
+    plt.title("Chronometric Function (RT vs Difficulty)", fontweight='bold', pad=15)
     plt.ylabel("Reaction Time (s)")
     plt.xlabel("Decision Difficulty")
     plt.legend( loc='upper right', bbox_to_anchor=(1.6, 0.8), frameon=False)
@@ -123,7 +123,7 @@ def run_plotting():
     sns.violinplot(x='block_sign', y='max_deviation', hue='block_pressure', data=df_md,
                    split=True, inner='quartile', palette=colors_pressure, cut=0)
 
-    plt.title("Fig 3. Motor Conflict: Max Deviation", fontweight='bold', pad=15)
+    plt.title("Motor Conflict: Max Deviation", fontweight='bold', pad=15)
     plt.ylabel("Trajectory Curvature (MD)")
     plt.xlabel("Context")
     plt.legend(loc='center right',bbox_to_anchor=(1.2, 0.6), frameon=False,prop={'size': 12})
@@ -143,7 +143,7 @@ def run_plotting():
                     logistic=True, n_boot=100, ci=95,
                     scatter_kws={'alpha': 0.05}, line_kws={'label': press, 'color': colors_pressure[press]})
 
-    plt.title("Fig 4. Psychometric Curve (Value Sensitivity)", fontweight='bold', pad=15)
+    plt.title("Psychometric Curve (Value Sensitivity)", fontweight='bold', pad=15)
     plt.xlabel("Value Difference (Estimated SV - Immediate)")
     plt.ylabel("P(Choose Delay)")
     plt.axvline(0, color='grey', linestyle='--', alpha=0.3)
@@ -162,7 +162,7 @@ def run_plotting():
 
     plt.axvline(2.0, color='red', linestyle='--', alpha=0.5, label='Time Limit (2.0s)')
 
-    plt.title("Fig 5. Reaction Time Distributions", fontweight='bold', pad=15)
+    plt.title("Reaction Time Distributions", fontweight='bold', pad=15)
     plt.xlabel("Reaction Time (s)")
     plt.ylabel("Density")
     plt.xlim(0, 3.0)
@@ -176,7 +176,7 @@ def run_plotting():
     g = sns.jointplot(data=df_merged, x="rt", y="max_deviation", hue="block_pressure",
                       palette=colors_pressure, alpha=0.4, height=8)
 
-    g.fig.suptitle("Fig 6. Correlation: Decision Time vs. Motor Conflict", fontsize=16, fontweight='bold', y=1.02)
+    g.fig.suptitle("Correlation: Decision Time vs. Motor Conflict", fontsize=16, fontweight='bold', y=1.02)
     g.set_axis_labels("Reaction Time (s)", "Max Deviation (Curvature)")
     plt.show()
 
