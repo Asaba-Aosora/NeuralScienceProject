@@ -4,3 +4,5 @@ data/prev
 figs
 *.png
 result_pic
+*.md
+*.pdf
