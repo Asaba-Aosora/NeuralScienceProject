@@ -136,10 +136,10 @@ class EZDiffusionAnalyzer:
         # 分组计算滑动窗口
         if subject_level:
             # 分组后reset_index(drop=True), 避免索引列与数据列重复
-            windowed_data = self.data.groupby(['subj', 'condition']).apply(_sliding_wrapper)
+            windowed_data = self.data.groupby(['subj', 'condition']).apply(_sliding_wrapper, include_groups=False)
             windowed_data = windowed_data.reset_index(drop=False)  # 保留分组索引为列
         else:
-            windowed_data = self.data.groupby(['condition']).apply(_sliding_wrapper)
+            windowed_data = self.data.groupby(['condition']).apply(_sliding_wrapper, include_groups=False)
             windowed_data = windowed_data.reset_index(drop=False)
         
         # 拆分condition列为block_sign/block_pressure
@@ -154,6 +154,7 @@ class EZDiffusionAnalyzer:
         
         # 过滤NaN值后可视化
         windowed_data_valid = windowed_data.dropna(subset=['a'])
+        print(f"有效窗口数据量: {len(windowed_data_valid)}")
         if len(windowed_data_valid) == 0:
             print("警告: 无有效数据用于阈值塌陷可视化")
             return windowed_data
@@ -184,7 +185,7 @@ class EZDiffusionAnalyzer:
         
         return windowed_data
     
-    def _sliding_window_analysis(self, df, window=5):
+    def _sliding_window_analysis(self, df, window=5, step=1):
         """滑动窗口分析 (单个被试+条件) """
         results = []
         total_trials = len(df)
@@ -196,7 +197,7 @@ class EZDiffusionAnalyzer:
             return pd.DataFrame()
         
         # 滑动窗口计算EZ参数
-        for i in range(0, total_trials - window + 1, window):
+        for i in range(0, total_trials - window + 1, step):
             window_df = df.iloc[i:i+window]
             window_num = i // window + 1
             
@@ -225,7 +226,7 @@ class EZDiffusionAnalyzer:
         late = windowed_data[windowed_data['window'] == last_window][['subj', 'condition', 'a']].rename(columns={'a': 'a_late'})
         
         # 合并计算塌陷程度
-        collapse = pd.merge(early, late, on=['subj', 'condition'], how='inner')
+        collapse = pd.merge(early, late, on=['subj', 'condition'], how='outer')
         collapse['collapse_magnitude'] = collapse['a_late'] - collapse['a_early']
         collapse['has_collapse'] = collapse['collapse_magnitude'] < 0  # 负值=阈值塌陷
         
